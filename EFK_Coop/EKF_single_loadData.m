@@ -20,67 +20,79 @@ Q=zeros(n,n);
 
 R=r^2;        % covariance of measurement  
 
-deltaT = 1; 
-f=@(s,u)[s(1)+deltaT*s(4)*cos(s(3));s(2)+deltaT*s(4)*sin(s(3));s(3)+deltaT*s(5);u(1),u(2)];
-% nonlinear state equations
+deltaT = 1/50;
 
-h=@(s)[s(1)+sin(h(4)-s(3))*h(3), s(2)+cos(h(4)-s(3))*h(3),h(3),h(4)];
+% nonlinear state equations 
+f=@(s,u)[s(1)+deltaT*s(4)*cos(s(3));s(2)+deltaT*s(4)*sin(s(3));s(3)+u(1)*deltaT*sin(u(2))];
+% state(s): s(1) is x-axis location, s(2) is y-axis location, s(3) is orientation, u(1) is speed and u(2) is angular velocity 
+
 %measurement equations
+h=@(s,l)[sqrt((l(1)-s(1))^2-(s(2)-l(2))^2); atan((l(2)-s(2))/(l(1)-s(1)))-s(3)];
+% landmark(l): l(1) is x-axis location, l(2) is y-axis location
 
 % initial actual state 
-a= zeros(n,1);
+a = zeros(n,1);
 %load landmark
+a(4:2:n-1) = Landmark_Groundtruth(:,2);
+a(5:2:n) = Landmark_Groundtruth(:,3);
  
-s=a+q*normrnd(0,0.5,[5,1]);               % initial state with noise
+s=a;               % initial state
+
+P=eye(n);                          % initial state covraiance
+N = size(Robot1_Groundtruth,1);                                     % total dynamic steps
+
+sV = zeros(3,N);        %estmate        
+aV = zeros(3,N);        %actual
+zV = zeros(2,N);        %measurement 
 
 
-P=eye(n);                         
+z = zeros(1,2);  %landmark location(x,y)
+ 
 
-N=1000;                                     % total dynamic steps
-sV = zeros(n,N);        %estmate        
-aV = zeros(n,N);          %actual
-zV = zeros(4,N);
-
-
-z = zeros(1,4);  %landmark location(x,y), distance and angle from the robot to the landmark
-t = 1248272263;  
+flag = 1; %% flag for searching inside Odometry later 
 for k = 1:N     
 % num of iterations 
-
+    t = Robot1_Groundtruth(1,1); 
+    
     % collect groundtruth/actual state
-    loc = find(Robot1_Groundtruth(:,1) < t+k & Robot1_Groundtruth(:,1) > t+k-1);
-    a(1:3) = Robot1_Groundtruth(loc(5),2:4); 
-    loc = find(Robot1_Odometry(:,1) < t+k & Robot1_Odometry(:,1) > t+k-1)
-    if(not(isempty(loc)))
-      a(4:5) = Robot1_Odometry(loc(5),2:3); 
-      
-      s(4:5) = Robot1_Odometry(loc(5),2:3); 
- 
-    end
+    a = Robot1_Groundtruth(k,2:4);    
     aV(:,k) = a;                           % save actual state
     
     
+    
+    
     % collect measurment data 
-    loc = find(Robot1_Measurement(:,1) < t+k & Robot1_Measurement(:,1) > t+k-1);
-    if(not(isempty(loc)))
-      for j = 1: size(loc)
-        loc1 = find(Barcodes(6:end,2) == Robot1_Measurement(2,loc(j))); %%find the landmark number 
-         if(not(isempty(loc1)))
-           z(1:2) = Landmark_Groundtruth(loc1(1)-5,2:3);         
-           z(3:4) = Robot1_Measurement(loc(1),3:4);
-         end
-      end
-    end
+   
+    loc = ind(Robot1_Measurement(flag:end,1)<t+0.1 & Robot1_Measurement(flag:end,1)<t)
+   
     
     zV(:,k) = z;                         % save measurement data 
     
     % ekf for ith robot 
+    %EKF time update
     [s,A]=jaccsd(f,s);      %nonlinear update and linearization at current state
     P=A*P*A'+Q;             %partial update
-    [z1,H]=jaccsd(h,s);     %nonlinear measurement and linearization
-    K=P*H'*inv(H*P*H'+R);   %Kalman filter gain
-    s=s+K*(z-z1);           %state estimate
-    P=P-K*H*P;              %state covariance matrix
+    
+    
+    
+    
+    
+    %EKF measurement update when there is a valid measurement
+     if(not(isempty(loc)))
+      for j = 1: size(loc)
+        loc1 = find(Barcodes(6:end,2) == Robot1_Measurement(2,loc(j))); %%find the landmark number for an actual landmark
+         if(not(isempty(loc1)))
+                     
+            
+            
+            [z1,H]=jaccsd(h,s);     %nonlinear measurement and linearization
+            K=P*H'*inv(H*P*H'+R);   %Kalman filter gain
+            s=s+K*(z-z1);           %state estimate
+            P=P-K*H*P;              %state covariance matrix        
+         end
+      end
+    end
+    
     
     sV(:,k) = s;  % store estimate state
     
@@ -92,3 +104,5 @@ figure
   plot(sV(1,:),sV(2,:), 'b')
   axis equal
   hold off;
+  
+%}
