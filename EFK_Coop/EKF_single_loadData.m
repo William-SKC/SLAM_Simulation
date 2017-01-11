@@ -3,7 +3,6 @@
 %Shengkang Chen at UCLA 12/23/2016
 clc
 clear all
-close all
 
 load Barcodes.dat
 load Robot1_Measurement.dat
@@ -15,20 +14,20 @@ num_landmark = 15;
 num_state_robot = 3;
 num_measurement = 2; % for range and angle 
 n=num_state_robot+num_landmark*2;      %number of state for each robot: location and orientaion of the robot and location of each landmark
-q=0.5;    %std of process 
-r=0.1;    %std of measurement
+q=0.1;    %std of process 
+r=0.01;    %std of measurement
 
 Q=zeros(num_state_robot);
 Q=q^2*eye(num_state_robot);   % covariance of process
 
 R=r^2*eye(num_measurement);        % covariance of measurement  
 
-deltaT = 1/10;
+deltaT = 1/40;
 
 % nonlinear state equations 
 f=@(s,i)[s(1)+deltaT*i(1)*cos(s(3)+i(2)); 
          s(2)+deltaT*i(1)*sin(s(3)+i(2)); 
-         s(3)+i(1)*deltaT/33.782*sin(i(2))];
+         s(3)+i(1)*deltaT*sin(i(2))];
 % state: s(1) is x-axis location, s(2) is y-axis location, s(3) is orientation, Input: i(1) is speed and i(2) is angular velocity 
 
 % A_j: Jacobian matrix of partial derivatives of f
@@ -47,15 +46,14 @@ H_j = @(s,l) [((l(1)-s(1))^2-(l(2)-s(2))^2)^(-1/2)*(l(1)-s(1)), ((l(1)-s(1))^2-(
 
 % initial actual state
 a = zeros(n,1);
-a(1:3) = Robot1_Groundtruth(1,2:end);
+
 %load landmark
 a(4:2:n-1) = Landmark_Groundtruth(:,2);
 a(5:2:n) = Landmark_Groundtruth(:,3);
-s = a;               % initial state
 
 P = eye(num_state_robot);                          % initial state covraiance
 %N = size(Robot1_Groundtruth,1);                                     % total dynamic steps
-N = 50; 
+N = 80; 
 sV = zeros(3,N);        %estmate        
 aV = zeros(3,N);        %actual
 zV = zeros(2,N);        %measurement  
@@ -64,14 +62,20 @@ flag = 1; %% flag for searching inside Odometry later
 u = zeros(2,1);
 z = zeros(2,1);
 
-t = Robot1_Groundtruth(300,1);
+t = Robot1_Odometry(1,1)
+
+a(1:3) = Robot1_Groundtruth(1,2:end);
+s = a;               % initial state for estimation
+
 for k = 1:N  
 % num of iterations 
      
     
     % collect groundtruth/actual state
     loc = find(Robot1_Groundtruth(:,1)<t+deltaT & Robot1_Groundtruth(:,1)>t);
-    a(1:3) = Robot1_Groundtruth(loc(end),2:4);    
+    if(not(isempty(loc)))
+      a(1:3) = Robot1_Groundtruth(loc(end),2:4); 
+    end   
     aV(:,k) = a(1:3);                           % save actual state
     
     
@@ -87,14 +91,15 @@ for k = 1:N
     
     %EKF measurement update when there is a valid measurement
     % collect measurment data 
-    loc = find(Robot1_Measurement(flag:flag+10,1)<t+deltaT & Robot1_Measurement(flag:flag+10,1)>t); %% find correlated time 
+    loc = find(Robot1_Measurement(:,1)<t+deltaT & Robot1_Measurement(:,1)>t); %% find correlated time 
      if(not(isempty(loc)))
      flag = loc(end);
       for j = 1: size(loc)
         loc1 = find(Barcodes(6:end,2) == Robot1_Measurement(loc(j),2)); %%find the landmark number for an actual landmark
         if(not(isempty(loc1)))
-            l = Landmark_Groundtruth(loc1, 2:3);          
-            z = Robot1_Measurement(loc1, 3:4);
+            l = Landmark_Groundtruth(loc1, 2:3);     
+            z = Robot1_Measurement(loc(j), 3:4);
+            measurement_valid = Robot1_Measurement(loc(j), :)
             z = z';
             z1 = h(s(1:3),l);
             H = H_j(s(1:3),l);
@@ -107,7 +112,7 @@ for k = 1:N
     end
     
     zV(:,k) = z;  % save measurement data 
-    %}
+    
     sV(:,k) = s;  % store estimate state
     t = t+0.1;
 end 
@@ -115,8 +120,5 @@ end
 figure
   plot(aV(1,:),aV(2,:), 'r*')
   hold;
-  plot(sV(1,:),sV(2,:), 'b0')
-  %axis([-10 10 -10 10])
+  plot(sV(1,:),sV(2,:), 'b')
   hold off;
-  
-
