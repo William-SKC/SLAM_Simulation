@@ -1,10 +1,10 @@
-function [z,A]=jaccsd(fun,x)
+function [z,A]=jaccsd(fun,x,u)
 % JACCSD Jacobian through complex step differentiation
 % [z J] = jaccsd(f,x)
 % z = f(x)
 % J = f'(x)
 %
-z=fun(x);
+z=fun(x,u);
 n=numel(x);
 m=numel(z);
 A=zeros(m,n);
