@@ -3,6 +3,7 @@
 %Shengkang Chen at UCLA 12/23/2016
 clc
 clear all
+close all
 
 load Barcodes.dat
 load Robot1_Measurement.dat
@@ -22,12 +23,12 @@ Q=q^2*eye(num_state_robot);   % covariance of process
 
 R=r^2*eye(num_measurement);        % covariance of measurement  
 
-deltaT = 1/40;
+deltaT = 1/20;
 
 % nonlinear state equations 
 f=@(s,i)[s(1)+deltaT*i(1)*cos(s(3)+i(2)); 
          s(2)+deltaT*i(1)*sin(s(3)+i(2)); 
-         s(3)+i(1)*deltaT*sin(i(2))];
+         s(3)+i(2)*deltaT];
 % state: s(1) is x-axis location, s(2) is y-axis location, s(3) is orientation, Input: i(1) is speed and i(2) is angular velocity 
 
 % A_j: Jacobian matrix of partial derivatives of f
@@ -36,12 +37,12 @@ A_j = @(s, i) [ 1, 0, -deltaT*i(1)*sin(s(3)+i(2));
               0, 0, 1];
 
 %measurement equations
-h=@(s,l)[sqrt((l(1)-s(1))^2-(s(2)-l(2))^2); 
+h=@(s,l)[norm(l-s(1:2)); 
          atan((l(2)-s(2))/(l(1)-s(1)))-s(3)];
 % landmark(l): l(1) is x-axis location, l(2) is y-axis location
 
 % H_j: Jacobian matrix of partial derivatives of h
-H_j = @(s,l) [((l(1)-s(1))^2-(l(2)-s(2))^2)^(-1/2)*(l(1)-s(1)), ((l(1)-s(1))^2-(l(2)-s(2))^2)^(-1/2)*(l(2)-s(2)) , 0 
+H_j = @(s,l) [((l(1)-s(1))^2+(l(2)-s(2))^2)^(-1/2)*(l(1)-s(1)), ((l(1)-s(1))^2+(l(2)-s(2))^2)^(-1/2)*(l(2)-s(2)) , 0 
                 (1+((l(2)-s(2))/(l(1)-s(1)))^2)^(-1)*((l(2)-s(2))/((l(1)-s(1)))^2), (1+((l(2)-s(2))/(l(1)-s(1)))^2)^(-1)*(-1/(l(1)-s(1))), -1];
 
 % initial actual state
@@ -53,7 +54,7 @@ a(5:2:n) = Landmark_Groundtruth(:,3);
 
 P = eye(num_state_robot);                          % initial state covraiance
 %N = size(Robot1_Groundtruth,1);                                     % total dynamic steps
-N = 80; 
+N = 90; 
 sV = zeros(3,N);        %estmate        
 aV = zeros(3,N);        %actual
 zV = zeros(2,N);        %measurement  
@@ -80,8 +81,7 @@ for k = 1:N
     
     
     %EKF time update
-    
-    loc = find(Robot1_Measurement(:,1)<t+deltaT & Robot1_Measurement(:,1)>t); %% find correlated time 
+    loc = find(Robot1_Odometry(:,1)<t+deltaT & Robot1_Odometry(:,1)>t); %% find correlated time 
     if(not(isempty(loc)))
       u = Robot1_Odometry(loc(end),2:3);
     end
@@ -99,10 +99,10 @@ for k = 1:N
         if(not(isempty(loc1)))
             l = Landmark_Groundtruth(loc1, 2:3);     
             z = Robot1_Measurement(loc(j), 3:4);
-            measurement_valid = Robot1_Measurement(loc(j), :)
+            measurement_valid = Robot1_Measurement(loc(j), :);
             z = z';
             z1 = h(s(1:3),l);
-            H = H_j(s(1:3),l);
+            H = H_j(s(1:3),l)
             
             K=P*H'*inv(H*P*H'+R);   %Kalman filter gain
             s=s+K*(z-z1);           %state estimate
@@ -114,11 +114,15 @@ for k = 1:N
     zV(:,k) = z;  % save measurement data 
     
     sV(:,k) = s;  % store estimate state
-    t = t+0.1;
+    t = t+deltaT;
 end 
 
 figure
   plot(aV(1,:),aV(2,:), 'r*')
   hold;
-  plot(sV(1,:),sV(2,:), 'b')
+  plot(sV(1,:),sV(2,:), 'bs')
   hold off;
+  title('single robot EKF -- w/ measurement')
+  xlabel('x') % x-axis label
+  ylabel('y') % y-axis label
+  legend('actual', 'estimate')
