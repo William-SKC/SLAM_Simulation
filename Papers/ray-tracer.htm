@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<!-- saved from url=(0064)file:///Users/william/CS174A-Proj3/a3/assignment/ray-tracer.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">  
+<script type="text/javascript" src="./ray-tracer_files/MV.js"></script>  <!--  Javascript "include" files.  Any code in them gets //-->
+<script type="text/javascript" src="./ray-tracer_files/webgl-obj-loader.js"></script>  <!--  executed as part of the page loading.              //-->
+<script type="text/javascript" src="./ray-tracer_files/tinywebgl-ucla.js"></script>  <!--  <-This is the one with all the library functions   //-->
+<script type="text/javascript" src="./ray-tracer_files/example-scenes.js"></script>
+<script type="text/javascript" src="./ray-tracer_files/example-shapes.js"></script>
+<script type="text/javascript" src="./ray-tracer_files/example-shaders.js"></script>
+<script type="text/javascript" src="./ray-tracer_files/test-cases.js"></script>
+<script type="text/javascript" src="./ray-tracer_files/ray-tracer.js"></script>
+<script type="text/javascript"> "use strict" 
+  window.onload = function init()           // ********************* OUR WHOLE PROGRAM'S ENTRY POINT ********************* 
+    { 
+      window.contexts           = { };    // Add global variable "contexts".  Browsers support up to 16 WebGL contexts per page.
+      var str = "main_canvas";
+      document.getElementById( "canvases" ).appendChild( Object.assign( document.createElement( "canvas" ), { id: str, width: 500, height: 500 } ) );
+
+      var       shaders_to_load = [ "Phong_Model", "Funny_Shader", "Fake_Bump_Map"   ], // Put all our shader programs in the GPU.
+          texture_files_to_load = [ "text.png", "stars.png", "earth.gif" ],             // IMPORTANT: -- You have to include all your new image files here
+          scene_components      = [ "Debug_Screen", "Example_Camera", "Flag_Toggler" ]; // Register some scenes to the "Canvas_Manager" object -- which WebGL calls
+                                                                                        // upon every time a draw / keyboard / mouse event happens.
+      if( demos[0] == ""       ) scene_components.push( "Ray_Tracer" );
+      else for( let d of demos ) scene_components.push( d.replace(/-/g,"_") );  // Parse the URL and instantiate demos named there too.
+
+                                            contexts[ str ] = new Canvas_Manager( str, Color( 0, 0, 0, 1 ) );   // Second parameter sets background color
+      for( let s of       shaders_to_load ) contexts[ str ]. shaders_in_use[ s ]  = ( new window[s]( contexts[ str ].gl ) ); 
+      for( let f of texture_files_to_load ) contexts[ str ].textures_in_use[ f ]  = ( new Texture  ( contexts[ str ].gl, f, true ) );
+      for( let s of scene_components      ) contexts[ str ].register_scene_component( new window[s]( contexts[ str ] ) );
+      for( let c in contexts              ) contexts[   c ].render();     // Call render() for each WebGL context on this page.  Then render() will re-queue itself for more calls.
+    }
+  window.requestAnimFrame = ( function(w)           // Find the correct browser's version of requestAnimationFrame() needed for queue-ing up re-display events: 
+    { return w.requestAnimationFrame || w.webkitRequestAnimationFrame || w.mozRequestAnimationFrame || w.oRequestAnimationFrame || w.msRequestAnimationFrame ||
+      function( callback, element ) { w.setTimeout(callback, 1000/60);  }; } )( window );  
+  var demos = [];                                                 // (For explanation of this part see stackoverflow on "How to pass a parameter to a javascript through 
+  for ( let q of window.location.search.substring(1).split("&") ) //  a url and display it on a page?")
+    demos.push( decodeURIComponent( q || "" ).replace(/[^_\W]+/g, (s) => s.charAt(0).toUpperCase() + s.substr(1).toLowerCase() ) );      
+</script>
+<style>
+  .dropbtn { background-color: #4C9F50; color: white; padding: 4px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); }
+  .dropbtn:hover, .dropbtn:focus { background-color: #3e8e41; }
+  .dropdown { display:inline-block; }
+  .dropdown-content { display: none; position: absolute; background-color: #f9f9f9; min-width: 100px; overflow: auto; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); }
+  .dropdown-content a { color: black; padding: 4px 4px; display: block; }
+  .dropdown a:hover {background-color: #f1f1f1}
+  .show { display:inline-block; }
+</style>
+</head><body>
+<div class="dropdown" id="raytracer_menu"><span style="white-space: nowrap">           <button id="toggle_raytracing" class="dropbtn" style="background-color: #AF4C50">Toggle Ray Tracing</button>           <button onclick="document.getElementById(&quot;myDropdown2&quot;).classList.toggle(&quot;show&quot;); return false;" class="dropbtn" style="background-color: #8A8A4C">           Select Background Effect</button><div id="myDropdown2" class="dropdown-content">  <a>waves</a><a>lasers</a><a>mixture</a><a>ray_direction</a><a>color</a></div>          <button onclick="document.getElementById(&quot;myDropdown&quot; ).classList.toggle(&quot;show&quot;); return false;" class="dropbtn" style="background-color: #4C50AF">           Select Test Case</button><div id="myDropdown" class="dropdown-content">  <a>empty</a><a>test_outline</a><a>test_facing_wrong</a><a>test_ambient</a><a>test_overlap</a><a>test_diffuse</a><a>test_specular</a><a>test_oblong</a><a>test_interior_light</a><a>test_trapped_light</a><a>test_shadow</a><a>test_reflection_fast</a><a>test_reflection</a><a>test_reflection_and_shadow</a><a>sky_sphere</a><a>test_refract</a><a>test_transparent</a><a>show_homework_spec</a></div>           <button id="submit_scene" class="dropbtn">Submit Scene Textbox</button>           <div id="progress" style="display: inline-block;">Rendering ( 29.6875% )...</div></span></div><br>
+Open some test cases with the blue button.  Click and drag to steer.<br>
+<div id="canvases"><canvas id="main_canvas" width="500" height="500"></canvas></div>
+<textarea rows="25" cols="87" id="input_scene"></textarea><br>
+<a href="file:///Users/william/CS174A-Proj3/a3/assignment/ray-tracer.html#" onclick="document.getElementById( &quot;instructions&quot; ).style = &quot;display:block&quot;; this.style = &quot;display:none&quot;;">
+Click for instructions </a><div id="instructions" style="display:none">
+Controlling this Graphics Object: 
+<ul><li>Animations will usually begin in a paused state upon loading, so first you should press ALT+a to play or pause animation. </li><li>
+    Press t to un-hide the heads-up-display text.  **If this doesn't do anything** then you are running your files without correctly hosting them.  You need to 
+    run cd path/to/these/files, then run python -m http.server, then visit the URL localhost:8000. </li><li>
+    Clicking and dragging moves the third-person camera, like staying still while you seemingly spin the scene around.  If you'd like to spin around some other
+    focal point, you can set one by flying the other, first-person, camera right up to a desired point and then pressing o.</li><li>
+    Fly the first-person camera around the scene to adjust your vantage point using the keys w a s d to move in the plane that's along the ground, 
+    and the keys space and z to float up and down.  At any time press r to reset the camera and vantage point back to the world origin. </li><li>
+    The f key unfreezes the first-person camera's rotation setting so you can aim it around while flying or sitting still.  Move the mouse around away from the center of 
+    the window to steer, and press f again to stop this and to freeze the steering again.  Any roll rotation is controlled separately with the comma and period keys. </li><li>     
+    The keys ALT+n and ALT+g switch shading behaviors.  ALT+n directly shows you normal vectors on shapes by interpreting X,Y,Z vectors
+    as R,G,B colors.  ALT+g toggles Gouraud shading vs Smooth Phong shading with textures.</li><li>
+    Press up and down to cycle through a live feed of important strings and values of the program -- 
+    the code for each Scene_Component includes a function where it can provide these. </li><li> Have fun.
+</li></ul></div><p></p></body></html>

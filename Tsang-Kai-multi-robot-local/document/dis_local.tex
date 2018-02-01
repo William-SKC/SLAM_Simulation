@@ -1,0 +1,782 @@
+\documentclass[xcolor=x11names]{article}
+
+
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{tensor}
+\usepackage[usenames,dvipsnames]{xcolor}
+
+\usepackage{mathtools}
+
+%\usepackage[backend=biber,style=alphabetic]{biblatex}
+%\bibliography{ref}
+
+\usepackage{fullpage}
+
+\DeclareMathOperator\diag{\mathsf{diag}}
+\DeclareMathOperator\Diag{\mathsf{Diag}}
+
+\DeclareMathOperator\E{\mathsf{E}}
+
+\DeclareMathOperator\T{\mathsf{T}}
+\DeclareMathOperator\half{\frac{1}{2}}
+\DeclareMathOperator\tr{\mathsf{tr}}
+
+
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{definition}{Definition}
+\newtheorem{lemma}{Lemma}
+
+
+
+\DeclareGraphicsExtensions{.eps,.pdf,.png,.jpg}
+
+
+\title{Fully Decentralized Extended Kalman Filter Based \\Multirobot Cooperative Localization Algorithm}
+\author{Tsang-Kai Chang}
+%\date{\today}
+%\date{Nov. 15, 2016}
+
+
+\begin{document}
+
+\maketitle
+
+
+%%%%%
+\section{Introduction}
+
+
+
+
+   Since the benchmark work of EKF-based cooperative localization \cite{roumeliotis_distributed_2002}, the extensive communication overheads have been regarded as the main challenge for conducting this method in reality. The following works can be categorized into two group based on their approaches to mitigate this problem.
+   \begin{itemize}
+      \item Delicately design the information exchange scheme (even with a centralized processor) to keep the overall covariance matrix equivalent to a centralized one. \cite{kia_centralized-equivalent_2014, kia_cooperative_2015}
+      \item Each robot keeps only the information directly related to itself. \cite{carrillo-arce_decentralized_2013, luft_recursive_2016}
+   \end{itemize}
+   
+   The first approach has extensive communication for keep all $O(N^2)$ parameters in covariance matrices in each robot updated. In contrast, robots only hold $O(N)$ parameters in the other case, but the uncertainty bound is not as tight as the first one. 
+   
+   We want to find a solution lying between two extremes, to fully utilize the information one robot has.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%%%%%
+\section{System Model}
+   
+   
+   There are $N$ robots in the system, together with $M$ landmarks whose positions are known by the robots in advance.
+   
+   The state of robot $i$ at time $t$ is denoted by
+   \begin{equation}
+      s^{t}_{i} = 
+      \begin{bmatrix} 
+         x^{t}_{i} \\  y^{t}_{i}
+      \end{bmatrix}.
+   \end{equation}  
+   The angle of robot $i$ at time $t$ is denoted by $\theta^t_i$. However, due to the inconsistency issue in linearization \cite{bailey_consistency_2006}, $\theta^t_i$ is not included in $s^t_i$ and its uncertainty is bounded by assumption, as in \cite{mourikis_performance_2006}.
+   
+%%%
+\subsection{Position Propagation}
+
+   The position propagation captures the state variation over a time interval. For simplicity, we use discrete index $t$ for time, and the duration between consecutive time index is $\delta t$. In reality, the time interval may not be a constant, but we leave this issue for later discussion. The propagation model for robot $i$ can be modeled as
+   \begin{equation}
+      s^{t+1}_{i} = f(s^{t}_{i}, u^{t}_{i} +\mathbf{w}^t_{u}),
+   \end{equation}
+   where $u^{t}_{i}$ is the control input and $\mathbf{w}^t_{i}$ is the propagation disturbance. The propagation model $f$ is assumed to be invariant with time and identical for all robots.
+   
+   
+   In common scenario, the control input can model the odometry input as
+   \begin{equation}
+      u^{t}_{i} =
+      \begin{bmatrix} 
+         v^t_{i} \\ \omega^t_{i}
+      \end{bmatrix},      
+   \end{equation}
+   where $v$ is the translational velocity and $\omega$ is the angular velocity. Correspondingly, each input is disturbed by noisy term $\mathbf{w}_{v}$ and $\mathbf{w}_{\omega}$, respectively. We then have the explicit propagation model for robots as
+   \begin{equation}
+      s^{t+1}_{i} = 
+      \begin{bmatrix} 
+         x^{t+1}_{i} \\  y^{t+1}_{i}
+      \end{bmatrix}
+      = f(s^{t}_{i}, u^{t}_{i} + \mathbf{w}^t_{u})
+      = 
+      \begin{bmatrix} 
+         x^{t}_{i} + (v^t_{i}+\mathbf{w}^t_{v})  \delta t \cos\theta^{t}_{i}   \\  y^{t}_{i} + ( v^t_{i}+\mathbf{w}^t_{v}) \delta t   \sin\theta^{t}_{i} 
+      \end{bmatrix}.
+   \end{equation}   
+   
+
+
+%%%
+\subsection{Landmark Observation}
+   Let $s_{l,m}$ denote the position of $m$th landmark (or geometric beacon in early literature).
+   
+   The relative position measure taken by robot $i$ of landmark $m$ is given as
+   \begin{equation}
+      o_{im} = C^{\T}(\theta_i) (s_{l,m} - s_i) + \mathbf{w}_{o,i},
+   \end{equation}
+   where $\mathbf{w}_{o,i}$ is the noise in this observation and $C(\theta)$ is the $2\times 2$ rotation matrix with argument $\theta$.
+   
+   In practical, the measurement is from the distance and bearing sensors on the robots. Therefore, the observation noise $\mathbf{w}_{o,i}$ is determined by the noise in both sensors on the observer robot. Let $d^l_{im}$ be the measured distance and $\phi^l_{im}$ in the observation between robot $i$ and landmark $m$. We then have
+   \begin{equation}
+      o_{im} = (d_{im} + \mathbf{w}_{d} )
+      \begin{bmatrix} 
+         \cos ( \phi_{im} + \mathbf{w}_{\phi}) \\  \sin ( \phi_{im} +  \mathbf{w}_{\phi})
+      \end{bmatrix},
+   \end{equation}   
+   where $\mathbf{w}_{d}$ and $\mathbf{w}_{\phi}$ are the distance and bearing measurement noises, respectively.
+
+
+
+%%%
+\subsection{Robot Observation}
+
+   The robot observation is similar to that of landmarks. The relative position measure taken by robot $i$ of robot $j$ is given as
+   \begin{equation}
+      o_{ij} = C^{\T}(\theta_i) (s_{j} - s_i) + \mathbf{w}_{o,i}.
+   \end{equation}
+
+
+%%%
+\subsection{Robot Communication}
+
+   By communication, robots are able to make their estimations more accurate by exchanging information with other robots. We assume that in communication, one robot sends all its estimation parameter to another robot.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%%%%%
+\section{Localization Algorithm}
+
+   To implement EKF, we assume that the initial state and the noise terms are all zero-mean Gaussian distributed.
+   Each robot keeps a version of the state of the whole system, denoted by $^i\hat{s}$, and updated by EKF.
+
+%%%
+\subsection{Position Propagation}
+
+   The control input is only available for the robot locally. In consequence, robots have no idea how other robots move. Without control inputs, we can model the control inputs themselves as random term. Specifically, for robot i, the motion propagation of robot $j\neq i$ can be expressed as
+   \begin{equation}
+      s^{t+1}_{j} =
+      \begin{bmatrix} 
+         x^{t}_{j} +  \mathbf{v}^t \delta t  \cos\theta^{t}_{j} \\  y^{t}_{j} + \mathbf{v}^t \delta t \sin\theta^{t}_{j} 
+      \end{bmatrix},
+   \end{equation}   
+   where $\mathbf{v}$ is a zero-mean Gaussian random variable with variance $\sigma_{\mathbf{v}}^2$, which is much larger than that of the corresponding noise  $\sigma_{\mathbf{w},v}^2$. The value of $\sigma_{\mathbf{v}}^2$ can be determined by the physical constraint of the robots, and we can easily adjust the model of $\mathbf{v}$ depending on the situation. For example, in formation control, robot $i$ may be aware of the motion propagation of other robots.
+
+
+   The estimate update rule for position propagation of robot $i$ is given by
+   \begin{equation}
+      ^i\hat{s}_i^{t+1} = 
+      \begin{bmatrix} 
+         ^i{\hat{x}}{_i^{t}} +  v^t_{i} \delta t\cos(^i{\hat{\theta}}{_i^{t}})  \\  
+         ^i{\hat{y}}{_i^{t}} + v^t_{i} \delta t \sin(^i{\hat{\theta}}{_i^{t}})   
+      \end{bmatrix}
+   \end{equation}   
+and for $j \neq i$
+   \begin{equation}
+      ^i{\hat{s}}{_j^{t+1}} = 
+      \begin{bmatrix} 
+         ^i{\hat{x}}{_j^{t}}  \\  
+         ^i{\hat{y}}{_j^{t}} 
+      \end{bmatrix}.
+   \end{equation} 
+
+   The error propagation is given by
+   \begin{equation}
+      \begin{bmatrix} 
+         ^i\tilde{x}_i^{t+1} \\  {}^i\tilde{y}_i^{t+1}
+      \end{bmatrix}
+      \simeq
+      \begin{bmatrix} 
+         ^i\tilde{x}^{t}_{i} \\  ^i\tilde{y}^{t}_{i} 
+      \end{bmatrix} +
+      \begin{bmatrix} 
+         \delta t \cos(^i\hat{\theta}^{t}_{i}) &  -v^t_{i}  \delta t \sin(^i\hat{\theta}^{t}_{i})  \\
+         \delta t \sin(^i\hat{\theta}^{t}_{i}) &  v^t_{i}  \delta t \cos(^i\hat{\theta}^{t}_{i}) \\
+      \end{bmatrix}
+      \begin{bmatrix} 
+         \mathbf{w}_v \\  ^i\tilde{\theta}^{t}_{i} 
+      \end{bmatrix},
+   \end{equation}    
+and for $j \neq i$
+   \begin{equation}
+      \begin{bmatrix} 
+         ^j\tilde{x}_i^{t+1} \\  {}^j\tilde{y}_i^{t+1}
+      \end{bmatrix}
+      \simeq
+      \begin{bmatrix} 
+         ^j\tilde{x}^{t}_{i} \\  ^j\tilde{y}^{t}_{i} 
+      \end{bmatrix} +
+      \begin{bmatrix} 
+         \delta t \cos\hat{\theta}^{t}_{j} \\
+         \delta t \sin\hat{\theta}^{t}_{j} \\
+      \end{bmatrix} \mathbf{v}
+      \leq 
+      \begin{bmatrix} 
+         ^j\tilde{x}^{t}_{i} \\  ^j\tilde{y}^{t}_{i} 
+      \end{bmatrix} +
+      \begin{bmatrix} 
+         1 \\ 1
+      \end{bmatrix} \mathbf{v} \delta t 
+   \end{equation}.
+
+
+   The additional covariance term induced for robot $i$ itself by control disturbance is
+   \begin{equation}
+      ^i\Sigma_{u_i} = (\delta t)^2 C(^i\hat{\theta_i})  
+      \begin{bmatrix} 
+         \sigma_{\mathbf{w},v}^2 & 0 \\ 0 & v_{i}^2  \sigma_{\mathbf{w},\theta_i}^2 
+      \end{bmatrix}
+      C^{\T}(^i\hat{\theta_i}),
+   \end{equation}
+   and for $j \neq i$
+   \begin{equation}
+      ^i\Sigma_{u_j} = (\delta t)^2 \sigma_{\mathbf{v}}^2 I_2 . 
+   \end{equation}
+   Since the position propagation of one robot is independent of that of the rest, the covariance update is given by
+   \begin{equation}
+      ^i\Sigma_{s}^{t+1} = {^i}\Sigma_{s}^{t} +
+      \begin{bmatrix} 
+         ^i\Sigma_{u_1} & \cdots & 0_{2\times2} \\
+         \vdots  & \ddots & \vdots  \\
+         0_{2\times2} & \cdots & ^i\Sigma_{u_N}       
+      \end{bmatrix}.
+   \end{equation}
+
+
+
+
+%%%
+\subsection{Landmark Observation}
+   The positions of landmarks are known for robots in advance. Consequently, the landmark observation can be regarded as a source of absolute positioning.
+   
+   The position of landmark $s_{l,m}$ is determined, so it does not contribute any error in the measurement, nor the estimate. The error in the measurement can be approximated as
+   \begin{align}
+      \tilde{o}_{im} &= {o}_{im} - \hat{o}_{im} \notag \\
+         &\simeq {H}_{im} \tilde{s} + \mathbf{w}_{o,im} \notag \\
+         &\simeq {H}_{im} \tilde{s} + 
+         \begin{bmatrix} 
+            \cos\phi_{im} & - d_{im} \sin \phi_{im}\\
+            \sin\phi_{im} & d_{im} \cos \phi_{im}
+         \end{bmatrix}
+         \begin{bmatrix} 
+            \mathbf{w}_{d}\\  \mathbf{w}_{\phi}
+         \end{bmatrix},
+   \end{align}
+   where
+   \begin{align*}
+      {H}_{im} &= C^{\T}({}^i\hat{\theta_i}) H_{o_{im}}, \\
+      {H}_{o_{im}} &= \begin{bmatrix} \\
+            0_{2\times 2} & \cdots & \underbrace{-I_2}_i & \cdots & 0_{2\times2}
+         \end{bmatrix}_{2\times 2N}.
+   \end{align*}       
+   The covariance of the landmark observation is given by
+   \begin{align}
+      \Sigma_{o_{im}} &=  H_{im} {}^i\Sigma^{t-}_{s} H_{im}^{\T} +  C(\phi_{im}) 
+         \begin{bmatrix} 
+            \sigma^2_{\mathbf{w},d} & 0 \\  0 & d_{im}^2 \sigma^2_{\mathbf{w},\phi}
+         \end{bmatrix}
+         C^{\T}(\phi^l_{im}) \notag \\
+         &=  H_{im} {}^i\Sigma^{t-}_{s} H_{im}^{\T} +  \Sigma_{q_{im}}.
+         \label{eq:landmark_observation_cov_update}
+   \end{align}
+
+   The estimate update is given by
+   \begin{equation}
+      ^i\hat{s}^{t+} = {}^i\hat{s}^{t-} + {}^i\Sigma^{t-}_{s}  H_{im}^{\T} \Sigma_{o_{im}}^{-1} ({o}_{im} - \hat{o}_{im})
+   \end{equation}  
+with the covariance update as 
+   \begin{equation}
+      {}^i\Sigma^{t+}_{s} = {}^i\Sigma^{t-}_{s} - {}^i\Sigma^{t-}_{s}  H_{im}^{\T}  \Sigma_{o_{im}}^{-1} H_{im} {}^i\Sigma^{t-}_{s}.
+      \label{eq:landmark_observation_cov_update}
+   \end{equation}    
+
+
+
+%%%
+\subsection{Robot Observation}
+   
+   The relative observation between robots is similar to the landmark observation. When robot $i$ observes robot $j$ ,the error in the measurement can be approximated as
+   \begin{align}
+      \tilde{o}_{ij} &= {o}_{ij}  - \hat{o}_{ij} \notag \\
+         &\simeq H_{ij} \tilde{s} + \mathbf{w}_{o,ij} \notag \\
+         &\simeq H_{ij} \tilde{s} + 
+         \begin{bmatrix} 
+            \cos\phi_{ij} & -d_{ij} \sin \phi_{ij}\\
+            \sin\phi_{ij} & d_{ij} \cos \phi_{ij}
+         \end{bmatrix}
+         \begin{bmatrix} 
+            \mathbf{w}_{d}\\  \mathbf{w}_{\phi}
+         \end{bmatrix},
+   \end{align}
+   where
+   \begin{align*}
+      H_{ij} &= C^{\T}(\hat{\theta_i}) H_{o_{ij}}, \\
+      H_{o_{ij}} &= \begin{bmatrix} \notag\\
+            0_{2\times 2} & \cdots & \underbrace{-I_2}_i & \cdots & \underbrace{I_2}_j & \cdots & 0_{2\times2}
+         \end{bmatrix}_{2\times 2N}.
+   \end{align*}       
+   The covariance of the robot observation is given by
+   \begin{align}
+      \Sigma_{o_{ij}} &=   H_{ij} {}^i\Sigma^{t-}_{s}  H_{ij}^{\T} +  C(\phi_{ij}) 
+         \begin{bmatrix} 
+            \sigma^2_{\mathbf{w},d} & 0 \\  0 & {d_{ij}}^2 \sigma^2_{\mathbf{w},\phi}
+         \end{bmatrix}
+         C^{\T}(\phi_{ij}) \\
+         &=   H_{ij} {}^i\Sigma^{t-}_{s}  H_{ij}^{\T} +  \Sigma_{q_{ij}}.
+   \end{align}
+   From the implementation viewpoint, the distance between robot $i$ and robot $j$ will be more accurate from the measurement $d_{ij}$ than from the state estimate $^i\hat{s}$.
+
+   The estimate update is given by
+   \begin{equation}
+      ^i\hat{s}^{t+} = {}^i\hat{s}^{t-} + {}^i\Sigma^{t-}_{s}  H_{ij}^{\T} \Sigma_{o_{ij}}^{-1} ({o}_{ij}  - \hat{o}_{ij})
+   \end{equation}  
+together with the covariance update as 
+   \begin{equation}
+      {}^i\Sigma^{t+}_{s} = {}^i\Sigma^{t-}_{s} - {}^i\Sigma^{t-}_{s}  H_{ij}^{\T}  \Sigma_{o_{ij}}^{-1} H_{ij} {}^i\Sigma^{t-}_{s}.
+      \label{eq:robot_observation_cov_update}
+   \end{equation}    
+
+
+%%%
+\subsection{Observation}
+
+   Robots are supposed to observe more than one object at the same time, either landmarks or other robots. We can simply extend the framework to incorporate such general case. By stacking all observation robot $i$ takes in to a vector, we have
+   \begin{equation}
+      o_i = \begin{bmatrix}o_{ij}\end{bmatrix}_{j\in \mathcal{O}_i},
+   \end{equation}
+   where $\mathcal{O}_i \in \mathcal{R} \cup \mathcal{B}$ is the index set of the objects observed by robot $i$.
+The error propagation equation becomes
+   \begin{align}
+      \tilde{o}_{i} &= {o}_{i}  - \hat{o}_{i} \notag \\
+         &\simeq \mathbf{H}_{i} \tilde{s} + \mathbf{\Gamma}_i \mathbf{w}_{o,i}. 
+   \end{align}
+
+   \begin{align*}
+      \Sigma_{o_i} &= \mathbf{H}_{i} \Sigma_s \mathbf{H}_{i}^{\T} + \Sigma_{q_i}.
+   \end{align*}
+   
+   
+The matrix $\mathbf{H}_{i}$ signifies all the observation relationship of robot $i$.
+   \begin{align*}
+      \mathbf{H}_{i} &= \begin{bmatrix}H_{ij}\end{bmatrix}_{j\in \mathcal{O}_i } \\
+         &= \begin{bmatrix} C^{\T}({}^i\hat{\theta_i}) H_{o_{ij}}\end{bmatrix}_{j\in \mathcal{O}_i } \\
+         &= \Diag\left( C^{\T}({}^i\hat{\theta_i}) \right)\begin{bmatrix} H_{o_{ij}}\end{bmatrix}_{j\in \mathcal{O}_i } \\
+         &= \Diag\left( C^{\T}({}^i\hat{\theta_i}) \right) \mathcal{L}_i \otimes I_2,
+   \end{align*}
+where $\mathcal{L}_i$ is the incidence matrix of the observation graph of robot $i$, and $\otimes$ stands for the Kronecker product. Each robot observation can be regarded as a directed edge in the incidence matrix $\mathcal{L}_i$. For landmark observation, there is a directed edge pointing to robot $i$ itself. 
+
+
+
+
+
+
+
+
+
+
+
+
+\begin{lemma}
+   The rank of the incidence matrix of the observation graph $\mathcal{L}_i$ is 
+   \begin{equation}
+      \mathsf{rank}\left( \mathcal{L}_i  \right) = |\mathcal{O}_i \cap \mathcal{R}| + \mathbf{1}\{\mathcal{O}_i \cap \mathcal{B}\}.
+   \end{equation}
+\end{lemma}
+\begin{proof}
+   See \cite[p. 18]{bapat_graphs_2010}.
+\end{proof}
+
+In most cases when there is only one observed object, either landmark or robot, $\mathsf{rank}( \mathcal{L}_i)=1 $. Furthermore, for $\mathcal{L}_i$ to be full-rank, robot $i$ should observe the rest of the robot and at least one landmark.
+
+
+\begin{lemma}
+   The rank of  $\mathbf{H}_i$ is given by
+   \begin{equation}
+      \mathsf{rank}\left( \mathbf{H}_i  \right) = 2 \, \mathsf{rank}\left( \mathcal{L}_i  \right).
+   \end{equation}
+\end{lemma}
+\begin{proof}
+   \begin{align*}
+      \mathsf{rank}\left( \mathbf{H}_i  \right) &= \mathsf{rank}\left( \Diag\left( C^{\T}({}^i\hat{\theta_i}) \right) \mathcal{L}_i \otimes I_2 \right)  \\  
+           &= \mathsf{rank}\left(  \mathcal{L}_i \otimes I_2 \right)  \\  
+           &= \mathsf{rank}\left(  \mathcal{L}_i \right)  \mathsf{rank}\left( \otimes I_2 \right)  \\  
+           &= 2 \, \mathsf{rank}\left(  \mathcal{L}_i \right).  
+   \end{align*}
+\end{proof}
+
+
+%%%
+\subsection{Communication}
+   We consider the situation that robot $i$ receives all the information from robot $j$, including $^j\hat{s}$ and $^j\Sigma_s$. Robot $i$ can simply update its own estimation by
+   \begin{equation}
+      ^i\hat{s}^{t+} = {}^i\hat{s}^{t-} + {}^i\Sigma^{t-}_{s} \Sigma_{c_{ij}}^{-1} ({}^j\hat{s}  - {}^i\hat{s})
+   \end{equation}  
+and 
+   \begin{equation}
+      {}^i\Sigma^{t+}_{s} = {}^i\Sigma^{t-}_{s} - {}^i\Sigma^{t-}_{s} \,  \Sigma_{c_{ij}}^{-1} \, {}^i\Sigma^{t-}_{s},
+      \label{eq:comm_cov_update}
+   \end{equation}       
+where
+   \begin{equation}
+      \Sigma_{c_{ij}} = {}^i\Sigma^{t-}_{s} + {}^j\Sigma^{t-}_{s}.
+   \end{equation}       
+   
+   
+   In this algorithm, we can observe that even partial information is delivered to robot $i$, it is still valuable. In our example, the most valuable information is $^j\hat{s}_j$ for robot $i$.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%%%%%
+\section{Theoretical Analysis}
+
+   In this section, the performance analysis is based on quantifying the variation of covariance matrix in each action.
+
+   One reasonable uncertainty quantification of independent Gaussian random variables is the sum of their variances. For Gaussian vectors, we can apply eigen-decomposition to attain the variance in orthonormal basis.
+   
+   The sum of eigenvalues of a matrix is equal to the trace of the matrix. Furthermore, it is equal to the Frobenius norm of its squre root.
+   \begin{align*}
+      \mathsf{tr}(\Sigma)&= \sigma_1^2 + \cdots + \sigma_N^2 \\
+       &=  \Vert \Sigma^{\frac{1}{2}} \Vert^2_F.
+   \end{align*}
+
+   \begin{lemma}[p.279]
+      Given $A_{m\times n}$, $\Vert A \Vert^2_F = \mathsf{tr}(A^*A)$.
+   \end{lemma}
+
+   \begin{lemma}[p.491]
+      Given $A_{n\times n}$, $\mathsf{tr}(A)=\sum_{i=1}^n \lambda_i$, where $\lambda_i$ are the eigenvalues.
+   \end{lemma}
+   
+   \begin{lemma}[p.555]
+      Given $A_{m\times n}$ with $\mathsf{rank}(A)=r$, the nonzero singular values of $A$ are the positive square roots of the nonzero eigenvalues of $A^*A$ and $AA^*$.
+   \end{lemma}
+
+
+
+
+   \begin{lemma}
+   Given two $N\times N$ positive definite matrices $\Lambda$ and $\Pi$, if 
+   \begin{equation}
+      \Sigma^{-1} = \Lambda^{-1} + \Pi^{-1},
+      \label{eq:inverse_sum}
+   \end{equation}
+   then for the $i$th largest eigenvalue of $\Sigma$ satisfies
+   \begin{equation}
+      \sigma_i \leq  \min(\lambda_i, \pi_i),\quad i = 1,\dots, N,
+   \end{equation}
+   where $\lambda_i$ and $\pi_i$ are the $i$th largest eigenvalues of $\Lambda$ and $\Pi$, respectively.
+   \end{lemma}
+   \begin{proof}
+       Min-max theorem.
+   \end{proof}
+   
+   \begin{lemma}[Lower bound]
+   With the previous setting, 
+   \begin{equation}
+      \mathsf{tr}(\Sigma) \geq \frac{N^2}{\mathsf{tr}(\Lambda^{-1})  +\mathsf{tr}(\Pi^{-1}) }.
+   \end{equation}
+   \end{lemma}
+   \begin{proof}
+   From (\ref{eq:inverse_sum}), we have
+   \begin{align*}
+       \mathsf{tr}(\Sigma^{-1})
+         &=  \sum\frac{1}{\sigma_i}\\
+         &= \mathsf{tr}(\Lambda^{-1}) + \mathsf{tr}(\Pi^{-1})  \\ 
+         &= \sum\frac{1}{\lambda_i} + \sum\frac{1}{\pi_i}.
+   \end{align*}
+   By Cauchy-Schwarz inequality, 
+   \begin{align*}
+       \mathsf{tr}(\Sigma)
+         &\geq \frac{\left( \sum \frac{1}{\sqrt{\sigma_i}}\sqrt{\sigma_i} \right)^2}{ \sum \frac{1}{\sigma_i}} \\
+         &= \frac{N^2}{\mathsf{tr}(\Lambda^{-1})  +\mathsf{tr}(\Pi^{-1}) }.
+   \end{align*}
+   \end{proof}
+   
+
+   Both bounds can be tighter depends on the structure of the matrices, especially covariance matrices.
+
+
+%%%
+\subsection{Motion Propagation}
+
+
+%%%
+\subsection{Landmark Observation}
+   The general result of observation may be complicated at first sight. Therefore, we derive the result of landmark observation derived in previous section, and then extend the conclusion to arbitrary observation scheme.
+
+   By matrix inversion lemma
+   \[
+      A^{-1} - A^{-1} U \left(V A^{-1} U + C^{-1} \right)^{-1} V A^{-1} = \left(A + UC V \right)^{-1},
+   \]
+   we can rewrite the covariance update (\ref{eq:landmark_observation_cov_update}) as
+   \begin{align}
+      \Sigma^{+}_s &= \Sigma_s - \Sigma_s  H_{im}^{\T}  \left(  H_{im} \Sigma_{s}  H_{im}^{\T} +  \Sigma_R \right)^{-1} H_{im} \Sigma_s \notag\\
+          &= \left( \Sigma_s^{-1} + H_{im}^{\T} \Sigma_{q_{im}}^{-1} H_{im}    \right)^{-1} \notag\\
+          &= \Sigma_s \left( I_{2N} + H_{im}^{\T} \Sigma_{q_{im}}^{-1} H_{im} \Sigma_s   \right)^{-1}. 
+          \label{eq:theoretical_landmark_observation}
+   \end{align}    
+    
+     The block matrix is nonzero only in the $i$-th diagonal block, as
+    \begin{equation}
+       H_{im}^{\T} \Sigma_{q_{im}}^{-1} H_{im} = 
+         \begin{bmatrix} 
+               0 & \cdots & 0 & \cdots & 0 \\
+                 & \ddots & \\
+                0 &  \cdots & C(\theta_i) \Sigma_{q_{im}}^{-1} C^{\T}(\theta_i)  \\
+               &  &  & \ddots&  \\
+               &  &  &  & 0
+         \end{bmatrix}.       
+    \end{equation}   
+   Therefore, it is not difficult to show that $\mathsf{rank}(H_{im}^{\T} \Sigma_{q_{im}}^{-1} H_{im})= \mathsf{rank} (H_{im})$. 
+    
+   To proceed, we relabel the robot observing the landmark at the upper-left corner.
+    \begin{equation}
+       H_{im}^{\T} \Sigma_{q_{im}}^{-1} H_{im} = \Lambda =
+         \begin{bmatrix} 
+            \Lambda'_{2\times 2} & 0\\
+             0 & 0
+         \end{bmatrix},\quad \Lambda' = C(\theta_i) \Sigma_{q_{im}}^{-1} C^{\T}(\theta_i).
+    \end{equation}
+    
+   \begin{align*}
+      \Sigma^{+}_s &= \Sigma_s \left( I_{2N} + H_{im}^{\T} \Sigma_{q_{im}}^{-1} H_{im} \Sigma_s   \right)^{-1}\\
+          &= \Sigma_s \left( I_{2N} + \Lambda \Sigma_s   \right)^{-1}\\
+          &= \Sigma_s
+          \begin{bmatrix} 
+            I_2 + \Lambda' \Sigma_{s,11}&  \Lambda' \Sigma_{s,12}\\
+            0  & I_{2N-2}
+          \end{bmatrix}^{-1} \\
+          &= \Sigma_s
+          \begin{bmatrix} 
+            \left(I_2 + \Lambda' \Sigma_{s,11} \right)^{-1} &  -\left(I_2 + \Lambda' \Sigma_{s,11} \right)^{-1} \Lambda' \Sigma_{s,12}\\
+            0  & I_{2N-2}
+          \end{bmatrix} \\
+          &=
+          \begin{bmatrix} 
+            \Sigma_{s,11}\left(I_2 + \Lambda' \Sigma_{s,11} \right)^{-1} &  -\Sigma_{s,11}\left(I_2 + \Lambda'\Sigma_{s,11} \right)^{-1} \Lambda' \Sigma_{s,12}+\Sigma_{s,12} \\
+            \Sigma_{s,21}\left(I_2 + \Lambda' \Sigma_{s,11} \right)^{-1}  &  \Sigma_{s,22}  -\Sigma_{s,21}\left(I_2 + \Lambda' \Sigma_{s,11} \right)^{-1} \Lambda' \Sigma_{s,12}
+          \end{bmatrix} \\
+          &=
+          \begin{bmatrix} 
+            \Sigma_{s,11}\left(I_2 + \Lambda' \Sigma_{s,11} \right)^{-1} &  \left(I_2 + \Sigma_{s,11} \Lambda' \right)^{-1}\Sigma_{s,12} \\
+            \Sigma_{s,21}\left(I_2 + \Lambda' \Sigma_{s,11} \right)^{-1}  & \Sigma_{s,22}  -\Sigma_{s,21}\left(I_2 + \Lambda' \Sigma_{s,11} \right)^{-1} \Lambda' \Sigma_{s,12}
+          \end{bmatrix}.
+   \end{align*}        
+   
+    By Lemma \ref{lemma:upper_bound}, $\Sigma_{s,11}^+$ is upper bounded by $\Lambda'$. Meanwhile, $\Sigma_{s,22}^+ = \Sigma_{s,22}$.
+    In short, after the landmark observation update, the sub-covariance of robot $i$ will decrease to the noise of sensors, while the rest of the covariance stays unchanged.
+    
+    
+\begin{theorem}
+   After single landmark observation update, only the uncertainty of the robot itself changes as
+   \[
+    \frac{4}{\mathsf{tr}\left(  \Sigma_{s,ii}^{-1}\right) + \sigma^{-2}_{\mathbf{w},d} + d_{im}^{-2} \sigma^{-2}_{\mathbf{w},\phi}}  \leq \mathsf{tr}\left({\Sigma_{s,ii}^+}  \right) \leq  \max(\sigma^2_{\mathbf{w},d},d_{im}^2 \sigma^2_{\mathbf{w},\phi}),
+   \]
+   while the uncertainty of the rest robot keeps the same.
+\end{theorem}    
+    
+    
+%%%
+\subsection{Robot Observation}    
+    
+   First, we have to partition the robots into those involved in the observation from the rest. By relabeling the robots involved in the observation to the upper-left corner, we have
+   \begin{align*}
+      \Sigma^{+}_s &= \Sigma_s \left( I_{2N} + H_{ij}^{\T} \Sigma_{q_{ij}}^{-1} H_{ij} \Sigma_s   \right)^{-1}\\
+          &= \Sigma_s \left( I_{2N} + \Pi \Sigma_s   \right)^{-1}.
+   \end{align*}
+   
+    \begin{equation}
+       H_{ij}^{\T} \Sigma_{q_{ij}}^{-1} H_{ij} = \Pi =
+         \begin{bmatrix} 
+            \Pi'_{4\times 4} & 0\\
+             0 & 0
+         \end{bmatrix},\quad \Pi' = 
+         \begin{bmatrix}
+            C(\theta_i) \Sigma_{q_{im}}^{-1} C^{\T}(\theta_i) & -C(\theta_i) \Sigma_{q_{im}}^{-1} C^{\T}(\theta_i) \\
+            -C(\theta_i) \Sigma_{q_{im}}^{-1} C^{\T}(\theta_i) & C(\theta_i) \Sigma_{q_{im}}^{-1} C^{\T}(\theta_i)
+         \end{bmatrix}.
+    \end{equation}    
+    
+
+
+
+   \begin{align*}
+      \Sigma^{+}_s 
+          &= 
+          \begin{bmatrix} 
+            \Sigma_{s,11}^+  & \Sigma_{s,12}^+\\
+            \Sigma_{s,21}^+  & \Sigma_{s,22}^+
+          \end{bmatrix}          \\
+          &=
+          \begin{bmatrix} 
+            \Sigma_{s,11}\left(I_4 + \Pi' \Sigma_{s,11} \right)^{-1} &  \left(I_4 + \Sigma_{s,11} \Pi' \right)^{-1}\Sigma_{s,12} \\
+            \Sigma_{s,21}\left(I_4 + \Pi' \Sigma_{s,11} \right)^{-1}  & \Sigma_{s,22}  -\Sigma_{s,21}\left(I_4 + \Pi' \Sigma_{s,11} \right)^{-1} \Pi' \Sigma_{s,12}
+          \end{bmatrix}.
+   \end{align*}     
+   $\Sigma_{22}^+$ contains all the covariance of robots not involved in the observation. We should focus on $\Sigma^+_{11}$ from now on.
+    It is obvious that $\mathsf{rank}(\Pi')=2$. With its structure, we can decompose $\Pi'$ as
+    \begin{equation}
+       \Pi' = U^{\T} \Lambda U, \quad \Lambda=         
+       \begin{bmatrix} 
+            \Lambda'  & 0\\
+             0 & 0
+         \end{bmatrix}
+         =
+         \begin{bmatrix} 
+            2 \Sigma_{q_{im}}^{-1}  & 0\\
+             0 & 0
+         \end{bmatrix}, 
+         \quad U = \frac{1}{\sqrt{2}}
+       \begin{bmatrix} 
+            C^{\T}(\theta_i) & -C^{\T}(\theta_i) \\
+             I & I
+         \end{bmatrix},
+    \end{equation}
+    where $U$ is orthonormal.
+    
+    
+   \begin{align*}
+      \Sigma_{s,11}^+
+          &= \Sigma_{s,11}\left(I_4 + \Pi' \Sigma_{s,11} \right)^{-1}.
+   \end{align*}
+   \begin{align*}
+          U \Sigma_{s,11}^+ U^{\T}
+          &= U \Sigma_{s,11}\left(I_4 + \Pi' \Sigma_{s,11} \right)^{-1} U^{\T} \\
+          &= U \Sigma_{s,11} U^{\T} U \left(I_4 + \Pi' \Sigma_{s,11} \right)^{-1} U^{\T} \\
+          &= U \Sigma_{s,11} U^{\T} \left(U U^{\T}  + U \Pi' \Sigma_{s,11} U^{\T} \right)^{-1}\\
+          &= U \Sigma_{s,11} U^{\T} \left(I_4  + \Lambda U \Sigma_{s,11} U^{\T} \right)^{-1}.
+   \end{align*}      
+    
+   
+    Let $P =  U \Sigma_{s,11} U^{\T} $, 
+    \begin{align*}
+       P &=         
+       \begin{bmatrix} 
+            P_{11}  & P_{12}\\
+            P_{21} & P_{22}
+       \end{bmatrix} \\
+       &= \frac{1}{2}
+         \begin{bmatrix} 
+            C^{\T} & -C^{\T}  \\
+             I & I
+         \end{bmatrix}
+         \begin{bmatrix} 
+            \Sigma_{jj} & \Sigma_{ji} \\
+            \Sigma_{ij} & \Sigma_{ii}
+         \end{bmatrix}
+         \begin{bmatrix} 
+            C & I \\
+            -C & I
+         \end{bmatrix} \\
+       &= \frac{1}{2}
+       \begin{bmatrix} 
+           C^{\T}\left(\Sigma_{jj} + \Sigma_{ii} - \Sigma_{ji} - \Sigma_{ij}\right) C & \\
+             & \Sigma_{jj} + \Sigma_{ii} + \Sigma_{ji} + \Sigma_{ij}
+       \end{bmatrix}.
+    \end{align*}    
+    
+    
+    
+   \begin{align*}
+          P^+ &= 
+          \begin{bmatrix} 
+            P^+_{11}  & P^+_{12}\\
+            P^+_{21} & P^+_{22}
+          \end{bmatrix} \\          
+          &= U \Sigma_{s,11} U^{\T} \left(I_4  + \Lambda U \Sigma_{s,11} U^{\T} \right)^{-1}  \\
+          &= P \left(I_4  + \Lambda P\right)^{-1} \\
+          &= P
+          \begin{bmatrix} 
+            I_2 + \Lambda' P_{11}&  \Lambda' P_{12}\\
+            0  & I_{2}
+          \end{bmatrix}^{-1} \\
+          &= 
+          \begin{bmatrix} 
+            P_{11} & P_{12}\\
+            P_{21} & P_{22}\\
+          \end{bmatrix} 
+          \begin{bmatrix} 
+            \left(I_2 + \Lambda' P_{11}   \right)^{-1} &  -\left(I_2 + \Lambda' P_{11}   \right)^{-1}\Lambda' P_{12}\\
+            0  & I_{2}
+          \end{bmatrix} \\
+          &=
+          \begin{bmatrix} 
+            P_{11}\left(I_2 + \Lambda'   P_{11} \right)^{-1} &  \left(I_2 + P_{11} \Lambda'   \right)^{-1}P_{12} \\
+            P_{21}\left(I_2 + \Lambda'   P_{11} \right)^{-1}  & P_{22} - P_{21}\left(I_2 + \Lambda'   P_{11} \right)^{-1}\Lambda' P_{12}
+          \end{bmatrix}.
+   \end{align*}        
+
+       
+       
+\begin{theorem}
+   After robot $i$  observes robot $j$,
+   \begin{equation}
+    \frac{16}{\mathsf{tr}\left(  \Sigma_{s,ii}^{-1}\right) + \mathsf{tr}\left(  \Sigma_{s,jj}^{-1}\right) + \sigma^{-2}_{\mathbf{w},d} + d_{im}^{-2} \sigma^{-2}_{\mathbf{w},\phi}}  \leq \mathsf{tr}\left(\Sigma^+_{jj} + \Sigma^+_{ii}\right),
+   \end{equation}
+   and
+   \begin{equation}
+    \mathsf{tr}\left(\Sigma^+_{jj} + \Sigma^+_{ii}\right) \leq \frac{1}{4} \mathsf{tr}(\Sigma_{q_{im}}) + \frac{1}{2} \mathsf{tr}\left(\Sigma_{jj} + \Sigma_{ii} + \Sigma_{ji} + \Sigma_{ij}\right),
+   \end{equation}   
+   while rest of the covariance terms does not change.
+\end{theorem}        
+
+
+
+%%%
+\subsection{Communication}
+
+   The upper bound of communication update can be further improved in the case where the covariance between two robots are $0$.
+
+
+
+
+\bibliographystyle{IEEEtran}
+{\footnotesize \bibliography{co_loc}}
+
+\end{document}
